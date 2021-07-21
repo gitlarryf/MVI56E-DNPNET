@@ -1,0 +1,95 @@
+﻿////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//  Routine: DNPNETServerDatabaseControl
+//  Author : Larry Frieson
+//  Desc   : Small Routine that checks and enforces the DNP Server database of the MVI56E-DNPNET, regardless of what the
+//           user has configured in the DNPNET UDT's.
+//  Date   : 05/29/2020
+//  Tags   : DNPServerDatabaseSizes - (of type: DNPNETSERVERDATABASE): Contains the database size values for the desired
+//                                                                     DNPNET slave database sizes.
+//
+//  Copyright © 2020 ProSoft Technology, Inc.  All rights reserved.
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Set the Database sizes right here in this routine...
+// Set the inputs that we're going to handle...
+//*** Uncomment this block of code if you want the database values to be defined in this routine.
+DNPServerDatabaseSizes.BI       := 100;     // 1600  BOOLs    (100)
+DNPServerDatabaseSizes.AI16     := 100;     //  100  INTs     (100)
+DNPServerDatabaseSizes.AI32     := 100;     //  100  DINTs    (200)
+DNPServerDatabaseSizes.FLTI     := 50;      //   50  REALs    (100)
+DNPServerDatabaseSizes.DBLI     := 50;      //   50  LREALs   (200)
+DNPServerDatabaseSizes.CNTR     := 0;       //    0  DINTs    (  0)
+
+// Set the outputs that we plan to handle...
+DNPServerDatabaseSizes.BO       := 10;      // 160  BOOLs     (10)
+DNPServerDatabaseSizes.AO16     := 20;      //  20  INTs      (20)
+DNPServerDatabaseSizes.AO32     := 0;       //   0  DINTs     ( 0)
+DNPServerDatabaseSizes.FLTO     := 10;      //  10  REALs     (10)
+DNPServerDatabaseSizes.DBLO     := 0;       //   0  LREALs    ( 0)
+                                            //             -------
+                                            //                740 total words used.
+//***/
+// Don't attempt to force the database sizes until the module has at least completed one cycle through the firmware.
+IF DNPNET.UTIL.LastRead = 300 THEN
+    // Test the calculated DNPNET database sizes against the desired sizes, and if they are not what the user wants them to
+    // be, then forcefully set the values to the desired value, and WARM boot the module.  Do NOT cold-boot it.
+    IF (( DNPNET.UTIL.DNP_Server_Database.Binary_Input_Words      <> DNPServerDatabaseSizes.BI)    OR
+        ( DNPNET.UTIL.DNP_Server_Database.PLC_Binary_Input_Words  <> DNPServerDatabaseSizes.BI))   OR
+        ((DNPNET.UTIL.DNP_Server_Database.Analog_Inputs           <> DNPServerDatabaseSizes.AI16)  OR
+        ( DNPNET.UTIL.DNP_Server_Database.PLC_Analog_Inputs       <> DNPServerDatabaseSizes.AI16)) OR
+        ((DNPNET.UTIL.DNP_Server_Database.Analog32_Inputs         <> DNPServerDatabaseSizes.AI32)  OR
+        ( DNPNET.UTIL.DNP_Server_Database.PLC_Analog32_Inputs     <> DNPServerDatabaseSizes.AI32)) OR
+        ((DNPNET.UTIL.DNP_Server_Database.Float_Inputs            <> DNPServerDatabaseSizes.FLTI)  OR
+        ( DNPNET.UTIL.DNP_Server_Database.PLC_Float_Inputs        <> DNPServerDatabaseSizes.FLTI)) OR
+        ((DNPNET.UTIL.DNP_Server_Database.Double_Inputs           <> DNPServerDatabaseSizes.DBLI)  OR
+        ( DNPNET.UTIL.DNP_Server_Database.PLC_Double_Inputs       <> DNPServerDatabaseSizes.DBLI)) OR
+        ((DNPNET.UTIL.DNP_Server_Database.Counters                <> DNPServerDatabaseSizes.CNTR)  OR
+        ( DNPNET.UTIL.DNP_Server_Database.PLC_Counters            <> DNPServerDatabaseSizes.CNTR))
+    THEN
+        // Set the input database sizes accordingly...
+        DNPNET.UTIL.DNP_Server_Database.Binary_Input_Words          := DNPServerDatabaseSizes.BI;
+        DNPNET.UTIL.DNP_Server_Database.PLC_Binary_Input_Words      := DNPServerDatabaseSizes.BI;
+        DNPNET.UTIL.DNP_Server_Database.Analog_Inputs               := DNPServerDatabaseSizes.AI16;
+        DNPNET.UTIL.DNP_Server_Database.PLC_Analog_Inputs           := DNPServerDatabaseSizes.AI16;
+        DNPNET.UTIL.DNP_Server_Database.Analog32_Inputs             := DNPServerDatabaseSizes.AI32;
+        DNPNET.UTIL.DNP_Server_Database.PLC_Analog32_Inputs         := DNPServerDatabaseSizes.AI32;
+        DNPNET.UTIL.DNP_Server_Database.Float_Inputs                := DNPServerDatabaseSizes.FLTI;
+        DNPNET.UTIL.DNP_Server_Database.PLC_Float_Inputs            := DNPServerDatabaseSizes.FLTI;
+        DNPNET.UTIL.DNP_Server_Database.Double_Inputs               := DNPServerDatabaseSizes.DBLI;
+        DNPNET.UTIL.DNP_Server_Database.PLC_Double_Inputs           := DNPServerDatabaseSizes.DBLI;
+        DNPNET.UTIL.DNP_Server_Database.Counters                    := DNPServerDatabaseSizes.CNTR;
+        DNPNET.UTIL.DNP_Server_Database.PLC_Counters                := DNPServerDatabaseSizes.CNTR;
+        DNPServerDatabaseSizes.Changed := 1;
+    END_IF;
+
+    // Check the output database sizes, and set the reboot flag if necessary.
+    IF (( DNPNET.UTIL.DNP_Server_Database.Binary_Output_Words     <> DNPServerDatabaseSizes.BO)     OR
+        ( DNPNET.UTIL.DNP_Server_Database.PLC_Binary_Output_Words <> DNPServerDatabaseSizes.BO))    OR
+        ((DNPNET.UTIL.DNP_Server_Database.Analog_Outputs          <> DNPServerDatabaseSizes.AO16)   OR
+        ( DNPNET.UTIL.DNP_Server_Database.PLC_Analog_Outputs      <> DNPServerDatabaseSizes.AO16))  OR
+        ((DNPNET.UTIL.DNP_Server_Database.Analog32_Outputs        <> DNPServerDatabaseSizes.AO32)   OR
+        ( DNPNET.UTIL.DNP_Server_Database.PLC_Analog32_Outputs    <> DNPServerDatabaseSizes.AO32))  OR
+        ((DNPNET.UTIL.DNP_Server_Database.Float_Output            <> DNPServerDatabaseSizes.FLTO)   OR
+        ( DNPNET.UTIL.DNP_Server_Database.PLC_Float_Outputs       <> DNPServerDatabaseSizes.FLTO))  OR
+        ((DNPNET.UTIL.DNP_Server_Database.Double_Outputs          <> DNPServerDatabaseSizes.DBLO)   OR
+        ( DNPNET.UTIL.DNP_Server_Database.PLC_Double_Outputs      <> DNPServerDatabaseSizes.DBLO))
+    THEN
+        // Set the Server Database output sizes...
+        DNPNET.UTIL.DNP_Server_Database.Binary_Output_Words         := DNPServerDatabaseSizes.BO;
+        DNPNET.UTIL.DNP_Server_Database.PLC_Binary_Output_Words     := DNPServerDatabaseSizes.BO;
+        DNPNET.UTIL.DNP_Server_Database.Analog_Outputs              := DNPServerDatabaseSizes.AO16;
+        DNPNET.UTIL.DNP_Server_Database.PLC_Analog_Outputs          := DNPServerDatabaseSizes.AO16;
+        DNPNET.UTIL.DNP_Server_Database.Analog32_Outputs            := DNPServerDatabaseSizes.AO32;
+        DNPNET.UTIL.DNP_Server_Database.PLC_Analog32_Outputs        := DNPServerDatabaseSizes.AO32;
+        DNPNET.UTIL.DNP_Server_Database.Float_Output                := DNPServerDatabaseSizes.FLTO;
+        DNPNET.UTIL.DNP_Server_Database.PLC_Float_Outputs           := DNPServerDatabaseSizes.FLTO;
+        DNPNET.UTIL.DNP_Server_Database.Double_Outputs              := DNPServerDatabaseSizes.DBLO;
+        DNPNET.UTIL.DNP_Server_Database.PLC_Double_Outputs          := DNPServerDatabaseSizes.DBLO;
+        DNPServerDatabaseSizes.Changed := 1;
+    END_IF;
+
+    // If we detect that the DB sizes actually changed, then force the DNPNET to reload its configuration.
+    IF DNPServerDatabaseSizes.Changed THEN
+        DNPServerDatabaseSizes.Changed := 0;
+        DNPNET.CONTROL.WarmBoot := 1;
+    END_IF;
+END_IF;

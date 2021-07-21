@@ -1,0 +1,316 @@
+﻿////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//  Routine: DNPNETConfiguration
+//  Author : Larry Frieson
+//  Desc   : Small Routine that configures an MVI56E-DNPNET module when we go from PROG to RUN mode, to ensure all of the
+//           configuration tags for the MVI56E-DNPNET are set correctly.  This also avoids any oddities seen in RSLogix v26
+//           and above that can sometimes revert changed controller tags back to the values stored in the copy of the ACD
+//           file on disk, rather than what is in the controller when you transition to offline.  This also adds much needed
+//           readability to a configuration this complicated and extensive.
+//  Date   : 05/09/2017
+//  Tags   : WaitOnDNPNETAddrChange: Bool - Program scoped tag used to tell when the WriteEthernetMSG is done.
+//           SetDNPNETIPAddrOnFS: Bool - if true, sets the IP address on the DNPNET on first scan, or when we transition from
+//                                       PROG to RUN.  (Note: If the module isn't talking to the AOI, for example, if we have
+//                                       the wrong slot configured in the AOI56EDNPNET AOI call, I'm not certain the address
+//                                       will update.  I have not tested this personally.)
+//                                       !!NOTE 2: In v1.30 FW, the module will set the .ER bit in the DNPNETWriteEthernetMSG
+//                                                 if the IP Addr is already set to what we just set it to.  To monitor for
+//                                                 this condition, watch check WriteEthernetMSG.ERR for the value of 56.
+//
+//  Copyright © 2017 ProSoft Technology, Inc.  All rights reserved.
+//
+//  Revision History:
+//    05/09/2017 17:38:16 created.
+//    03/14/2019 10:40:18 Added Server tags and override list tags.
+//    07/24/2019 15:01:34 Added flag to force IP address set on first scan.
+//    08/25/2020 10:33:24 Added Server_Timeout field for AOI v2.0, or reserved_1 for 1.15-1.19 AOI
+//    06/14/2021 10:00:54 Added check for duplicate IP address setting if using SetDNPNETIPAddrOnFS setting.
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+IF S:FS THEN
+    // *** If you plan to use the module as a CLIENT (MASTER), you will need the
+    // following client-based configuration tags:
+    // DNPNET.CONFIG.DNP3_Client - General Client Config Settings
+    // DNPNET.CONFIG.DNP_Server_List - List of Slaves (Servers or RTU's)
+    // DNPNET.CONFIG.DNP_Client_Commands - Commands we want to execute
+
+    // Start by configuring the DNPNET Client
+    DNPNET.CONFIG.DNP3_Client.Internal_ID                               :=   33;
+    DNPNET.CONFIG.DNP3_Client.Event_Messages_to_PLC                     :=    1;
+    DNPNET.CONFIG.DNP3_Client.Initialize_IED_Input_Database             :=    0;
+    DNPNET.CONFIG.DNP3_Client.Only_Time_Sync_Servers_If_Synced          :=    0;
+    DNPNET.CONFIG.DNP3_Client.Use_Binary_Output_status_Data             :=    1;
+    DNPNET.CONFIG.DNP3_Client.Use_Analog_Output_status_Data             :=    1;
+    DNPNET.CONFIG.DNP3_Client.Dont_Process_IIN                          :=    0;
+
+
+    // Configure the DNP Servers (aka. Slaves or RTU's) that we'll need to talk to
+    DNPNET.CONFIG.DNP_Server_List[0].Address                            :=  200;
+    DNPNET.CONFIG.DNP_Server_List[0].Data_Link_Confirm_Mode             :=    0;
+    DNPNET.CONFIG.DNP_Server_List[0].Data_Link_Confirm_Timeout          :=  300;
+    DNPNET.CONFIG.DNP_Server_List[0].Data_Link_Confirm_Retries          :=    3;
+    DNPNET.CONFIG.DNP_Server_List[0].Application_Layer_Response_Timeout := 5000;
+    DNPNET.CONFIG.DNP_Server_List[0].Server_Mode                        :=    9;
+    DNPNET.CONFIG.DNP_Server_List[0].IP_Address.a                       :=  192;
+    DNPNET.CONFIG.DNP_Server_List[0].IP_Address.b                       :=  168;
+    DNPNET.CONFIG.DNP_Server_List[0].IP_Address.c                       :=   30;
+    DNPNET.CONFIG.DNP_Server_List[0].IP_Address.d                       :=  200;
+    DNPNET.CONFIG.DNP_Server_List[0].Port                               :=20000;
+    DNPNET.CONFIG.DNP_Server_List[0].IP_Type                            :=    0;
+    DNPNET.CONFIG.DNP_Server_List[0].Connection_Retry_Interval          := 5000;
+
+    DNPNET.CONFIG.DNP_Server_List[1].Address                            :=  210;
+    DNPNET.CONFIG.DNP_Server_List[1].Data_Link_Confirm_Mode             :=    0;
+    DNPNET.CONFIG.DNP_Server_List[1].Data_Link_Confirm_Timeout          :=  300;
+    DNPNET.CONFIG.DNP_Server_List[1].Data_Link_Confirm_Retries          :=    3;
+    DNPNET.CONFIG.DNP_Server_List[1].Application_Layer_Response_Timeout := 5000;
+    DNPNET.CONFIG.DNP_Server_List[1].Server_Mode                        :=    9;
+    DNPNET.CONFIG.DNP_Server_List[1].IP_Address.a                       :=  192;
+    DNPNET.CONFIG.DNP_Server_List[1].IP_Address.b                       :=  168;
+    DNPNET.CONFIG.DNP_Server_List[1].IP_Address.c                       :=    2;
+    DNPNET.CONFIG.DNP_Server_List[1].IP_Address.d                       :=   10;
+    DNPNET.CONFIG.DNP_Server_List[1].Port                               := 4001;
+    DNPNET.CONFIG.DNP_Server_List[1].IP_Type                            :=    0;
+    DNPNET.CONFIG.DNP_Server_List[1].Connection_Retry_Interval          := 5000;
+
+    DNPNET.CONFIG.DNP_Server_List[2].Address                            :=  211;
+    DNPNET.CONFIG.DNP_Server_List[2].Data_Link_Confirm_Mode             :=    0;
+    DNPNET.CONFIG.DNP_Server_List[2].Data_Link_Confirm_Timeout          :=  300;
+    DNPNET.CONFIG.DNP_Server_List[2].Data_Link_Confirm_Retries          :=    3;
+    DNPNET.CONFIG.DNP_Server_List[2].Application_Layer_Response_Timeout := 5000;
+    DNPNET.CONFIG.DNP_Server_List[2].Server_Mode                        :=    9;
+    DNPNET.CONFIG.DNP_Server_List[2].IP_Address.a                       :=  192;
+    DNPNET.CONFIG.DNP_Server_List[2].IP_Address.b                       :=  168;
+    DNPNET.CONFIG.DNP_Server_List[2].IP_Address.c                       :=    2;
+    DNPNET.CONFIG.DNP_Server_List[2].IP_Address.d                       :=   11;
+    DNPNET.CONFIG.DNP_Server_List[2].Port                               :=20000;
+    DNPNET.CONFIG.DNP_Server_List[2].IP_Type                            :=    0;
+    DNPNET.CONFIG.DNP_Server_List[2].Connection_Retry_Interval          := 5000;
+
+    DNPNET.CONFIG.DNP_Server_List[3].Address                            :=  212;
+    DNPNET.CONFIG.DNP_Server_List[3].Data_Link_Confirm_Mode             :=    0;
+    DNPNET.CONFIG.DNP_Server_List[3].Data_Link_Confirm_Timeout          :=  300;
+    DNPNET.CONFIG.DNP_Server_List[3].Data_Link_Confirm_Retries          :=    3;
+    DNPNET.CONFIG.DNP_Server_List[3].Application_Layer_Response_Timeout := 5000;
+    DNPNET.CONFIG.DNP_Server_List[3].Server_Mode                        :=    9;
+    DNPNET.CONFIG.DNP_Server_List[3].IP_Address.a                       :=  192;
+    DNPNET.CONFIG.DNP_Server_List[3].IP_Address.b                       :=  168;
+    DNPNET.CONFIG.DNP_Server_List[3].IP_Address.c                       :=    2;
+    DNPNET.CONFIG.DNP_Server_List[3].IP_Address.d                       :=   12;
+    DNPNET.CONFIG.DNP_Server_List[3].Port                               :=20000;
+    DNPNET.CONFIG.DNP_Server_List[3].IP_Type                            :=    0;
+    DNPNET.CONFIG.DNP_Server_List[3].Connection_Retry_Interval          := 5000;
+    // *** Configure the rest of your servers here...
+    // !!! Do not forget to edit the UDT: DNPNETCONFIG if you need to talk to more
+    // !!! that the default 5 Servers!
+
+    // Configure all the Client Commands
+    DNPNET.CONFIG.DNP_Client_Commands[0].Port_Flags                     := 2#0000_0000_0001_0100; // Recommend even making a function for these options.
+    DNPNET.CONFIG.DNP_Client_Commands[0].Server_Address                 := 211;
+    DNPNET.CONFIG.DNP_Client_Commands[0].Object                         :=  41;
+    DNPNET.CONFIG.DNP_Client_Commands[0].Variation                      :=   2;
+    DNPNET.CONFIG.DNP_Client_Commands[0].Function                       :=   5;
+    DNPNET.CONFIG.DNP_Client_Commands[0].Point_Number_in_Server         :=   0;
+    DNPNET.CONFIG.DNP_Client_Commands[0].Point_Count                    :=  13;
+    DNPNET.CONFIG.DNP_Client_Commands[0].DNP_DB_Point_Number_in_Client  :=  -1;
+    DNPNET.CONFIG.DNP_Client_Commands[0].IED_DB_Point_Number_in_Client  :=   0;
+    DNPNET.CONFIG.DNP_Client_Commands[0].Poll_Interval                  :=   2;
+
+    DNPNET.CONFIG.DNP_Client_Commands[1].Port_Flags                     := 2#0000_0000_0001_0100;
+    DNPNET.CONFIG.DNP_Client_Commands[1].Server_Address                 := 212;
+    DNPNET.CONFIG.DNP_Client_Commands[1].Object                         :=  41;
+    DNPNET.CONFIG.DNP_Client_Commands[1].Variation                      :=   2;
+    DNPNET.CONFIG.DNP_Client_Commands[1].Function                       :=   5;
+    DNPNET.CONFIG.DNP_Client_Commands[1].Point_Number_in_Server         :=   0;
+    DNPNET.CONFIG.DNP_Client_Commands[1].Point_Count                    :=  13;
+    DNPNET.CONFIG.DNP_Client_Commands[1].DNP_DB_Point_Number_in_Client  :=  -1;
+    DNPNET.CONFIG.DNP_Client_Commands[1].IED_DB_Point_Number_in_Client  :=   0;
+    DNPNET.CONFIG.DNP_Client_Commands[1].Poll_Interval                  :=   2;
+
+    DNPNET.CONFIG.DNP_Client_Commands[2].Port_Flags                     := 2#0000_0000_0000_0100;
+    DNPNET.CONFIG.DNP_Client_Commands[2].Server_Address                 := 200;
+    DNPNET.CONFIG.DNP_Client_Commands[2].Object                         :=   1;
+    DNPNET.CONFIG.DNP_Client_Commands[2].Variation                      :=   1;
+    DNPNET.CONFIG.DNP_Client_Commands[2].Function                       :=   1;
+    DNPNET.CONFIG.DNP_Client_Commands[2].Point_Number_in_Server         :=   0;
+    DNPNET.CONFIG.DNP_Client_Commands[2].Point_Count                    := 100;
+    DNPNET.CONFIG.DNP_Client_Commands[2].DNP_DB_Point_Number_in_Client  :=  -1;
+    DNPNET.CONFIG.DNP_Client_Commands[2].IED_DB_Point_Number_in_Client  :=   0;
+    DNPNET.CONFIG.DNP_Client_Commands[2].Poll_Interval                  :=   0;
+    // *** Configure the remaining Client commands below...
+    // !!! Do not forget to edit the UDT: DNPNETCONFIG if you need to build more commands.
+
+
+    // ***********************************************************************************
+    // *** If you plan to use the module as a SERVER, you will need the following
+    // *** server-based tags, along with the white-lists and overrides, should you
+    // *** choose to use those features.
+
+    // Configure DNPNET.CONFIG.DNP3_Server Tags...
+    // Note: Most of these setting are factory default...
+    DNPNET.CONFIG.DNP3_Server.Internal_Server_ID                        :=  233;
+    DNPNET.CONFIG.DNP3_Server.Use_WhiteList                             :=    1;
+    DNPNET.CONFIG.DNP3_Server.Binary_Input_Class                        :=    1;
+    DNPNET.CONFIG.DNP3_Server.Analog16_Input_Class                      :=    2;
+    DNPNET.CONFIG.DNP3_Server.Analog32_Input_Class                      :=    2;
+    DNPNET.CONFIG.DNP3_Server.Float_Class                               :=    3;
+    DNPNET.CONFIG.DNP3_Server.Double_Class                              :=    3;
+    DNPNET.CONFIG.DNP3_Server.Analog16_Input_Deadband                   :=  499;
+    DNPNET.CONFIG.DNP3_Server.Analog32_Input_Deadband                   :=  599;
+    DNPNET.CONFIG.DNP3_Server.Float_Deadband                            := 1000;
+    DNPNET.CONFIG.DNP3_Server.Double_Deadband                           := 1000;
+    DNPNET.CONFIG.DNP3_Server.SelectOperate_Arm_Time                    :=  200;
+    DNPNET.CONFIG.DNP3_Server.Write_Time_Interval                       :=   60;
+    DNPNET.CONFIG.DNP3_Server.Data_Link_Confirm_Mode                    :=    0;
+    DNPNET.CONFIG.DNP3_Server.Data_Link_Confirm_Tout                    := 1000;
+    DNPNET.CONFIG.DNP3_Server.Data_Link_Max_Retry                       :=    2;
+    DNPNET.CONFIG.DNP3_Server.App_Layer_Confirm_Tout                    :=  500;
+    DNPNET.CONFIG.DNP3_Server.Unsolicited_Response                      :=    1;
+    DNPNET.CONFIG.DNP3_Server.Class_1_Unsol_Resp_Min                    :=   10;
+    DNPNET.CONFIG.DNP3_Server.Class_2_Unsol_Resp_Min                    :=   10;
+    DNPNET.CONFIG.DNP3_Server.Class_3_Unsol_Resp_Min                    :=   10;
+    DNPNET.CONFIG.DNP3_Server.Unsol_Resp_Delay                          := 5000;
+    DNPNET.CONFIG.DNP3_Server.UResp_Client_Address                      :=  200;
+    DNPNET.CONFIG.DNP3_Server.AnalogIinput_Events_with_time             :=    1;
+    DNPNET.CONFIG.DNP3_Server.Events_Require_Time_Sync                  :=    1;
+    DNPNET.CONFIG.DNP3_Server.Initialize_DNP_Output_Database            :=    0;
+    DNPNET.CONFIG.DNP3_Server.PassThrough_CROB                          :=    1;
+    DNPNET.CONFIG.DNP3_Server.Use_TripClose_Single_Point                :=    1;
+    DNPNET.CONFIG.DNP3_Server.Unsol_Retry_Limit                         :=    7;
+    DNPNET.CONFIG.DNP3_Server.Use_SOE_card                              :=    0;
+    DNPNET.CONFIG.DNP3_Server.Use_Data_from_Client_connection           :=    0;
+    DNPNET.CONFIG.DNP3_Server.Use_Double_Floats                         :=    0;
+    /*!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+     *!! Pay close attention to the following two lines.  Uncomment the one that
+     *!! is most suitable for the version of AOI that you're running.
+     *!! There is a server setting that will be "reserved_1", or "Server_Timeout"
+     *!! Both will contain the proper setting; so one or the other must be used!
+     *!! Uncomment the appropriate line for your version of the AOI!!
+     *!! The following line is for v1.15, 1.17, 1.18 and 1.19 of the AOI
+     *!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! */
+    DNPNET.CONFIG.DNP3_Server.reserved_1                                :=   60; // 60 seconds is the original default in pre 1.30.006 firmwares.
+    /*!! This next line is for v2.0 and above of the AOI! **/
+    //DNPNET.CONFIG.DNP3_Server.Server_Timeout                            :=   60; // 60 seconds is the original default in pre 1.30.006 firmware.
+
+    // Configure any WhiteLists, (if desired).  A WhiteList entry simply allows the
+    // given IP address to connect to us as a Server (Outstation).  If the tag
+    // DNPNET.CONFIG.DNP3_Server.Use_WhiteList is 0, then this list is entirely
+    // ignored.  If it is set to a 1, then before we accept a connection from a
+    // master, we validate it against this list.  This is a form of security; or a
+    // way "key" your masters and slaves together.
+    DNPNET.CONFIG.DNP3_WhiteList[0].a                                   :=  192;
+    DNPNET.CONFIG.DNP3_WhiteList[0].b                                   :=  168;
+    DNPNET.CONFIG.DNP3_WhiteList[0].c                                   :=   30;
+    DNPNET.CONFIG.DNP3_WhiteList[0].d                                   :=  200;
+
+    DNPNET.CONFIG.DNP3_WhiteList[1].a                                   :=  192;
+    DNPNET.CONFIG.DNP3_WhiteList[1].b                                   :=  168;
+    DNPNET.CONFIG.DNP3_WhiteList[1].c                                   :=   30;
+    DNPNET.CONFIG.DNP3_WhiteList[1].d                                   :=  203;
+
+    DNPNET.CONFIG.DNP3_WhiteList[2].a                                   :=   10;
+    DNPNET.CONFIG.DNP3_WhiteList[2].b                                   :=   12;
+    DNPNET.CONFIG.DNP3_WhiteList[2].c                                   :=   10;
+    DNPNET.CONFIG.DNP3_WhiteList[2].d                                   :=  154;
+    // !!! Do not forget to edit the UDT: DNPNETCONFIG if you need more WhiteList
+    // !!! entries.
+
+    // Configure any point-specific overrides.  You can override a single data point
+    // deadband value or even change the class it is assigned to.
+
+    // Binary overrides.  Note that there is no dead-band options for BIs.
+    DNPNET.CONFIG.DNP_Server_Override.Binary_Inputs[0].Point_Number     :=   42;
+    DNPNET.CONFIG.DNP_Server_Override.Binary_Inputs[0].Class            :=    2;
+    
+    DNPNET.CONFIG.DNP_Server_Override.Binary_Inputs[1].Point_Number     :=   43;
+    DNPNET.CONFIG.DNP_Server_Override.Binary_Inputs[1].Class            :=    2;
+    // *** Configure any remaining BI overrides below...
+
+    // Analog16 overrides.  Note that there is a dead-band for AI16's!
+    DNPNET.CONFIG.DNP_Server_Override.Analog16_Inputs[0].Point_Number   :=   10;
+    DNPNET.CONFIG.DNP_Server_Override.Analog16_Inputs[0].Class          :=    1;
+    DNPNET.CONFIG.DNP_Server_Override.Analog16_Inputs[0].Deadband       :=   10;
+
+    DNPNET.CONFIG.DNP_Server_Override.Analog16_Inputs[1].Point_Number   :=   11;
+    DNPNET.CONFIG.DNP_Server_Override.Analog16_Inputs[1].Class          :=    1;
+    DNPNET.CONFIG.DNP_Server_Override.Analog16_Inputs[1].Deadband       :=  100;
+    // *** Configure any remaining AI16 overrides below...
+
+    // Analog32 overrides.  Note that there is a dead-band for AI32's!
+    DNPNET.CONFIG.DNP_Server_Override.Analog32_Inputs[0].Point_Number   :=   218;
+    DNPNET.CONFIG.DNP_Server_Override.Analog32_Inputs[0].Class          :=     2;
+    DNPNET.CONFIG.DNP_Server_Override.Analog32_Inputs[0].Deadband       :=  8192;
+    // *** Configure any remaining AI32 overrides below...
+
+    // Float32 overrides.  Note that there is a dead-band for FLTI's that supports decimal numbers!
+    DNPNET.CONFIG.DNP_Server_Override.Float_Inputs[0].Point_Number      :=   437;
+    DNPNET.CONFIG.DNP_Server_Override.Float_Inputs[0].Class             :=     1;
+    DNPNET.CONFIG.DNP_Server_Override.Float_Inputs[0].Deadband          :=   .10;
+    // *** Configure any remaining FLTI overrides below...
+
+    // Float64 overrides.  Note that there is a dead-band for FLTI64's that supports decimal numbers!
+    DNPNET.CONFIG.DNP_Server_Override.Double_Inputs[0].Point_Number     :=   672;
+    DNPNET.CONFIG.DNP_Server_Override.Double_Inputs[0].Class            :=     1;
+    DNPNET.CONFIG.DNP_Server_Override.Double_Inputs[0].Deadband         := .8004;
+    // *** Configure any remaining FLTI64 overrides below...
+    // !!! Do not forget to edit the UDT: DNPNETCONFIG if you need to override any more
+    // !!! data point deadband values or class assignments.
+
+
+    // Configure the DNPNET IP Address Settings, if you intend to use them here.
+    // !! NOTE: Once the IP is set, there is very little reason you would ever need to reset it
+    //          via ladder logic.  Fail-over configurations are about the only reason to ever do
+    //          this and even then; great care must be taken when doing so.  Contact Tech Support
+    //          if you have questions concerning THIS.
+    DNPNET.CONFIG.IP_Settings.IP[0]                                     := 192;
+    DNPNET.CONFIG.IP_Settings.IP[1]                                     := 168;
+    DNPNET.CONFIG.IP_Settings.IP[2]                                     :=  30;
+    DNPNET.CONFIG.IP_Settings.IP[3]                                     :=  33;
+
+    DNPNET.CONFIG.IP_Settings.Netmask[0]                                := 255;
+    DNPNET.CONFIG.IP_Settings.Netmask[1]                                := 255;
+    DNPNET.CONFIG.IP_Settings.Netmask[2]                                := 255;
+    DNPNET.CONFIG.IP_Settings.Netmask[3]                                :=   0;
+
+    DNPNET.CONFIG.IP_Settings.Gateway[0]                                := 192;
+    DNPNET.CONFIG.IP_Settings.Gateway[1]                                := 168;
+    DNPNET.CONFIG.IP_Settings.Gateway[2]                                :=  30;
+    DNPNET.CONFIG.IP_Settings.Gateway[3]                                :=   1;
+
+
+    // Do we need to set the IP address on the module too?  We'd want to do that
+    // BEFORE we issue the WarmBoot, to make sure the message came back with a DN bit.
+    // **** Uncomment the following lines, and add the two tags if you wish to have
+    //      the IP address set in the DNPNET on first scan. (Transition from PROG to RUN also.)
+    //      Don't forget to add, and set the tag SetDNPNETIPAddrOnFS to a 1 in your
+    //      controller, or this will not function at all.
+//    IF SetDNPNETIPAddrOnFS THEN
+//        WaitOnDNPNETAddrChange                                          := 1;
+//        SetDNPNETIPAddrOnFS                                             := 0;
+//        DNPNET.CONFIG.IP_Settings.Write                                 := 1;
+//    ELSE
+        // Once configured, be sure and reboot the DNPNET module in case any of
+        // our settings in here changed.  We only want to do this here if we're
+        // NOT setting the IP address at this time.
+        DNPNET.CONTROL.WarmBoot := 1;
+//    END_IF;
+END_IF;
+
+// **** Uncomment the following lines, and add the two tags if you wish to have
+//      the IP address set in the DNPNET on first scan. (Transition from PROG to RUN also.)
+//      Don't forget to add, and set the tag SetDNPNETIPAddrOnFS to a 1 in your
+//      controller, or this will not function at all.
+
+// Now we're not on S:FS, so we wait for the IP address change DONE bit.
+//IF WaitOnDNPNETAddrChange THEN
+//    IF WriteEthernetMSG.DN THEN
+//        WaitOnDNPNETAddrChange := 0;
+//        DNPNET.CONTROL.WarmBoot := 1;
+//    ELSIF WriteEthernetMSG.ER THEN
+//        IF WriteEthernetMSG.ERR = 56 THEN
+//            // The module already has the correct IP address set, so we'll treat this like we would
+//            // the .DN bit!
+//            WaitOnDNPNETAddrChange := 0;
+//            DNPNET.CONTROL.WarmBoot := 1;
+//        END_IF;
+//    END_IF;
+//END_IF;

@@ -1,0 +1,153 @@
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//  Routine: CROBOutputRoutine
+//  Author : Larry Frieson
+//  Desc   : This routine scans DNPNET IED_Outputs.Binary and allows them to be sent as individual CROB commands as a state
+//           machine.  There is an assumption that you will be sending only handfuls of changes at any given time, and that
+//           the total size of your BO values are WORD aligned.
+//  Date   : 7/13/2021
+//  Tags   : All Tags created and used are PROGRAM SCOPE tags, but you CAN set them to be Controller Scope, but I wouldn't.
+//           CROBState - INT: The current state of this State Machine.
+//           PointIndex - INT: The DNP BO POint Index on the slave.  Note that it is expected that these values start at 0.
+//           BOSize - INT: The total size of the binary outputs.  I tried to make this round to the nearest BYTE.
+//           CROBIndex - INT: The index of the CROB command.  Once this reaches 24, it tries to empty those commands before
+//                            processing anymore.
+//           BOCurrent - BOOL[600]: This is a shadow table of the DNPNET.DATA.IED_Outputs.Binary, but in IED Index form.
+//           CROBProcessDone - BOOL: Boolean to tell the routine that it has scanned all of binaries that need to be scanned.
+//           AutoResetIEDOutput - (Controller Scope) BOOL: If true, this routine will clear the DNPNET.DATA.IED_Outputs.Binary
+//                                                         automatically.  This may be desired so that you don't have to go
+//                                                         with other logic and clear the bit, possibly making it send more
+//                                                         than one CROB command, if the processing is fast enough.
+//
+//  Copyright © 2021 ProSoft Technology, Inc.  All rights reserved.
+//
+//  Revision History:
+//    07/13/2021 18:58:17 created.
+//    07/15/2021 11:20:24 Added AutoResetIEDOutput flag to clear the BO on the DNPNET after creating the CROB.
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// This routine is a state machine, with the following possible states:
+// 1: Build CROB table
+// 2: Start Processing CROB Values
+// 3: Transmit current CROB
+// 4: Wait for Module to acknowledge
+// 5: Wait until module is done processing previous CROBs
+// 6: Reset State of CROB and continue
+IF S:FS THEN
+    CROBState := 0;
+    CROBProcessDone := 0;
+    BOIndex := 0;
+    CROBIndex := 0;
+    PointIndex := 0;
+END_IF;
+
+CASE CROBState OF
+    0,1: // 1: Build CROB table
+        // This is a funky hack to turn an array of INT's into a raw array of binaries.
+        FOR PointIndex := 0 TO (BOSize / 16) DO
+            BOCurrent[PointIndex*16+0] := DNPNET.DATA.IED_Outputs.Binary[PointIndex].0;
+            BOCurrent[PointIndex*16+1] := DNPNET.DATA.IED_Outputs.Binary[PointIndex].1;
+            BOCurrent[PointIndex*16+2] := DNPNET.DATA.IED_Outputs.Binary[PointIndex].2;
+            BOCurrent[PointIndex*16+3] := DNPNET.DATA.IED_Outputs.Binary[PointIndex].3;
+            BOCurrent[PointIndex*16+4] := DNPNET.DATA.IED_Outputs.Binary[PointIndex].4;
+            BOCurrent[PointIndex*16+5] := DNPNET.DATA.IED_Outputs.Binary[PointIndex].5;
+            BOCurrent[PointIndex*16+6] := DNPNET.DATA.IED_Outputs.Binary[PointIndex].6;
+            BOCurrent[PointIndex*16+7] := DNPNET.DATA.IED_Outputs.Binary[PointIndex].7;
+            IF PointIndex*16+8 > BOSize THEN
+                EXIT;
+            END_IF;
+            BOCurrent[PointIndex*16+8] := DNPNET.DATA.IED_Outputs.Binary[PointIndex].8;
+            BOCurrent[PointIndex*16+9] := DNPNET.DATA.IED_Outputs.Binary[PointIndex].9;
+            BOCurrent[PointIndex*16+10]:= DNPNET.DATA.IED_Outputs.Binary[PointIndex].10;
+            BOCurrent[PointIndex*16+11]:= DNPNET.DATA.IED_Outputs.Binary[PointIndex].11;
+            BOCurrent[PointIndex*16+12]:= DNPNET.DATA.IED_Outputs.Binary[PointIndex].12;
+            BOCurrent[PointIndex*16+13]:= DNPNET.DATA.IED_Outputs.Binary[PointIndex].13;
+            BOCurrent[PointIndex*16+14]:= DNPNET.DATA.IED_Outputs.Binary[PointIndex].14;
+            BOCurrent[PointIndex*16+15]:= DNPNET.DATA.IED_Outputs.Binary[PointIndex].15;
+        END_FOR;
+        BOIndex := 0;
+        CROBState := 2;
+    2: // 2: Start Processing CROB Values
+        CROBIndex := 0;
+        PointIndex := 0;
+        DNPNET.CONTROL.CROB_Commands.Command_Count := 0;                                    // Reset the CROB's and get ready to build a new block.
+        FOR PointIndex := BOIndex TO BOSize DO
+            IF BOCurrent[PointIndex] THEN // Only process those binaries that are actually enabled
+                DNPNET.CONTROL.CROB_Commands.CROB_Commands[CROBIndex].Server_Address := 1;      // Slave ID
+                DNPNET.CONTROL.CROB_Commands.CROB_Commands[CROBIndex].Object         := 12;     // Control Block
+                DNPNET.CONTROL.CROB_Commands.CROB_Commands[CROBIndex].Variation      := 1;      // Control Relay Output Block
+                DNPNET.CONTROL.CROB_Commands.CROB_Commands[CROBIndex].Function       := 5;      // Direct Operate
+                DNPNET.CONTROL.CROB_Commands.CROB_Commands[CROBIndex].Point_Number_In_Server := PointIndex;
+                DNPNET.CONTROL.CROB_Commands.CROB_Commands[CROBIndex].Control_Code   := 1;      // Set it to Pulse ON
+                DNPNET.CONTROL.CROB_Commands.CROB_Commands[CROBIndex].Pulse_Count    := 1;      // Single PULSE
+                DNPNET.CONTROL.CROB_Commands.CROB_Commands[CROBIndex].Pulse_On       := 3000;   // Pulse for 3 seconds
+                // I'm not sure this line is even necessary...
+                BOCurrent[PointIndex] := 0;  // Turn off the bit, once we send it to CROB!
+                CROBIndex := CROBIndex + 1;
+                DNPNET.CONTROL.CROB_Commands.Command_Count := CROBIndex;
+                // Turn off the bit after we create a CROB for it, to avoid any confusion with it.
+                IF AutoResetIEDOutput THEN
+                    CASE (PointIndex MOD 16) OF
+                        0:  DNPNET.DATA.IED_Outputs.Binary[PointIndex / 16].0  := 0;
+                        1:  DNPNET.DATA.IED_Outputs.Binary[PointIndex / 16].1  := 0;
+                        2:  DNPNET.DATA.IED_Outputs.Binary[PointIndex / 16].2  := 0;
+                        3:  DNPNET.DATA.IED_Outputs.Binary[PointIndex / 16].3  := 0;
+                        4:  DNPNET.DATA.IED_Outputs.Binary[PointIndex / 16].4  := 0;
+                        5:  DNPNET.DATA.IED_Outputs.Binary[PointIndex / 16].5  := 0;
+                        6:  DNPNET.DATA.IED_Outputs.Binary[PointIndex / 16].6  := 0;
+                        7:  DNPNET.DATA.IED_Outputs.Binary[PointIndex / 16].7  := 0;
+                        8:  DNPNET.DATA.IED_Outputs.Binary[PointIndex / 16].8  := 0;
+                        9:  DNPNET.DATA.IED_Outputs.Binary[PointIndex / 16].9  := 0;
+                        10: DNPNET.DATA.IED_Outputs.Binary[PointIndex / 16].10 := 0;
+                        11: DNPNET.DATA.IED_Outputs.Binary[PointIndex / 16].11 := 0;
+                        12: DNPNET.DATA.IED_Outputs.Binary[PointIndex / 16].12 := 0;
+                        13: DNPNET.DATA.IED_Outputs.Binary[PointIndex / 16].13 := 0;
+                        14: DNPNET.DATA.IED_Outputs.Binary[PointIndex / 16].14 := 0;
+                        15: DNPNET.DATA.IED_Outputs.Binary[PointIndex / 16].15 := 0;
+                    END_CASE;
+                END_IF;
+                IF CROBIndex + 1 = 25 THEN
+                    CROBState := 3;
+                    BOIndex := PointIndex;
+                    EXIT;
+                END_IF;
+            END_IF;
+        END_FOR;
+
+        IF CROBIndex > 0 THEN
+            CROBState := 3;
+        END_IF;
+
+        IF PointIndex >= BOSize THEN
+            // We made it through the entire Binary IEDOutput Table.  So, next time in, we need to restart the process.
+            BOIndex := 0; // Restart the scan from first point.
+            CROBProcessDone := 1;
+            CROBState := 6;
+        END_IF;
+    3: // 3: Transmit current CROB
+        DNPNET.CONTROL.CROB_Commands.Send := 1;
+        CROBState := 4;
+    4: // 4: Wait for Module to acknowledge
+        IF DNPNET.UTIL.LastWrite = 9901 THEN
+            CROBState := 5;
+        END_IF;
+    5: // 5: Wait until module is done processing previous CROBs
+        IF DNPNET.UTIL.LastRead = 300 THEN
+            CROBState := 6;
+        END_IF;
+    6: // 6: Reset State of CROB and continue
+        IF CROBProcessDone THEN
+            // We possibly made it with only one CROB packet.
+            BOIndex := 0; // Restart the scan from first point.
+            CROBProcessDone := 0;
+            PointIndex := 0;
+            CROBState := 1;
+        ELSE
+            CROBState := 2;
+        END_IF;
+    ELSE
+        CROBState [:=] 1;
+        CROBProcessDone [:=] 0;
+        BOIndex [:=] 0;
+        CROBIndex [:=] 0;
+        PointIndex [:=] 0;
+END_CASE;

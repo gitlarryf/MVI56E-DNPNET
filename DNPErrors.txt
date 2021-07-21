@@ -1,0 +1,80 @@
+﻿////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//  Routine: DNPErrors
+//  Author : Larry Frieson
+//  Desc   : Small Routine that checks the error status of all DNPNET commands, and sets the DNPErrors tag accordingly.
+//  Date   : 11/19/2016
+//  Tags   : NumCommands - INT: Contains the total number of commands defined, unless 0.  If 0, the routine will calculate
+//                              the number of commands you have defined.
+//           DNPErrors - INT: Contains the logical OR value of all command errors.
+//           CurrentCommand - INT: The index of the command being checked.
+//           DetectedIEDErrors - INT: 0 if there are no errors.  1 if one or more IED has errors. -1 if we didn't actually 
+//                                    perform a check.
+//           FlexIO - (UDT: FlexOutput): UDT of booleans to control a FlexIO 1794-OB8 module.
+//           EnableErrorDetection - BOOL: True if we want to check for errors, otherwise FALSE.
+//           CheckedCommands - INT: The number of commands we actually checked.
+//
+//  Copyright © 2016 ProSoft Technology, Inc.  All rights reserved.
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Note that you can set the NumCommand tag to 0, and this code will automagically figure out how many commands you have.  Otherwise,
+// we rely on the value you set in the NumCommands.  If 
+IF NumCommands = 0 THEN
+    SIZE(DNPNET.CONFIG.DNP_Client_Commands, 0, NumCommands);
+END_IF;
+
+IF DNPNET.UTIL.LastRead = 300 AND EnableErrorDetection THEN
+    // We got the GENSTAT request, so request our command error statuses.
+    DNPNET.CONTROL.Command_Errors.Request := 1;
+    // Reset our error indicator.
+    DNPErrors := 0;
+    DetectedIEDErrors := 0;
+    CheckedCommands := 0;
+    FOR CurrentCommand := 0 TO NumCommands-1 DO
+        // If the command isn't enabled, don't check it.
+        IF DNPNET.CONFIG.DNP_Client_Commands[CurrentCommand].Port_Flags.2 THEN
+            // Perform a logical OR on all of the command errors.  If there are none, we'll end up with 0 at the end.  If there
+            // are any errors whatsoever, we'll end up with some value other than zero.
+            DNPErrors := (DNPErrors OR DNPNET.STATUS.CommandErrors[CurrentCommand]);
+            CheckedCommands := CheckedCommands + 1;
+        END_IF;
+    END_FOR;
+    // Check to see if we even CARE about the command errors.  This could be useful in the event that you are taking your
+    // IED's offline and don't want to be bothered with errors at this time.  It can be further extended to support each IED.
+    IF DNPErrors = 0 AND CheckedCommands <> 0 THEN
+        // We got no errors, and we checked at least one command.  So;
+        // Set the proper LED Error indicators for our 1794-OB8.  NO errors reported, so toggle the 
+        // LED to Green, and turn off the red LED.
+        FlexIO.DNPNETErrorIndicator := 0;
+        FlexIO.DNPNETNoErrorIndicator := 1;
+        DetectedIEDErrors := 1;
+    ELSIF DNPErrors <> 0 AND CheckedCommands <> 0 THEN
+        // We have errors!  We know this because we checked at 1 or more commands.  So;
+        // Set the proper LED Error indicators for our 1794-OB8.  In this case, we have errors to report.
+        FlexIO.DNPNETErrorIndicator := 1;
+        FlexIO.DNPNETNoErrorIndicator := 0;
+        DetectedIEDErrors := 1;
+    ELSIF CheckedCommands = 0 THEN
+        // We don't have any enabled commands!  Therefore, we cannot possibly have errors.  If we do, they are supflorous, and should be ignored anyway.
+        FlexIO.DNPNETErrorIndicator := 1;
+        FlexIO.DNPNETNoErrorIndicator := 1;
+        FlexIO.DisabledErrorChecking := 1;
+        FlexIO.ModbusErrorIndicator := 1;
+        DetectedIEDErrors := -1;
+    END_IF;
+    // Since error detection is enabled, turn off the indicator that says we AREN'T checking for errors.
+    FlexIO.DisabledErrorChecking := 0;
+END_IF;
+
+// If we disabled error checking, we're going to set the proper LED, and just update the # of commands to check.
+IF NOT EnableErrorDetection THEN
+    FlexIO.DNPNETErrorIndicator := 0;
+    FlexIO.DNPNETNoErrorIndicator := 0;
+    // Turn on the yellow LED Stack light indicating that we're not currently monitoring for errors.
+    FlexIO.DisabledErrorChecking := 1;
+END_IF;
+
+// Update our # of commands to check for the next ladder scan.
+DNPNET.CONTROL.Command_Errors.Number_Of_Commands := NumCommands;
+
+// Copy the FlexIO UDT to the output image of our FlexIO Output module, causing the proper LED's to either
+// illuminate, or not.
+COP(FlexIO, FlexIO:1:O.Data, 1);
