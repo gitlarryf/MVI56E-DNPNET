@@ -17,19 +17,25 @@
 //                                                         automatically.  This may be desired so that you don't have to go
 //                                                         with other logic and clear the bit, possibly making it send more
 //                                                         than one CROB command, if the processing is fast enough.
+//           CROBTemplate - DNPNET_CROB_Command_Element: The template used for all CROB's sent.  FILL IN THIS TEMPLATE WITH
+//                                                       THE VALUES YOU INTEND TO USE!
+//           DisableAutoCROB - (Controller Scope) BOOL: Disables this routine, in case the PLC needs to send OTHER CROBs.
 //
 //  Copyright © 2021 ProSoft Technology, Inc.  All rights reserved.
 //
 //  Revision History:
 //    07/13/2021 18:58:17 created.
 //    07/15/2021 11:20:24 Added AutoResetIEDOutput flag to clear the BO on the DNPNET after creating the CROB.
+//    07/21/2021 09:29:01 Re-purposed state 4 to watch the state of CROB_Commands.Send before moving on.
+//                        Fixed bug forcing you to use a larger BOCurrent size than necessary.
+//                        Added tag CROBTemplate allowing user to modify CROBs sent from this routine, without recompiling.
 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // This routine is a state machine, with the following possible states:
 // 1: Build CROB table
 // 2: Start Processing CROB Values
 // 3: Transmit current CROB
-// 4: Wait for Module to acknowledge
+// 4: Wait for AOI/Module to acknowledge
 // 5: Wait until module is done processing previous CROBs
 // 6: Reset State of CROB and continue
 IF S:FS THEN
@@ -40,10 +46,20 @@ IF S:FS THEN
     PointIndex := 0;
 END_IF;
 
+IF DisableAutoCROB AND CROBState = 1 THEN
+    // We wait until the current batch of CROB's have been sent, before we stop
+    // running CROB's.  This is useful if the DNPNET needs to send a different
+    // type of CROB command, not just the PULSE ON, or PULSE OFF, or if the code
+    // needs to alter the CROBTemplate that is currently in use.  To test if this
+    // routine is done, perform checks on both tags.
+    // XIC DisableAutoCROB XIC CROBProcessDone ... BST NXB BND etc.
+    RET();
+END_IF;
+
 CASE CROBState OF
     0,1: // 1: Build CROB table
         // This is a funky hack to turn an array of INT's into a raw array of binaries.
-        FOR PointIndex := 0 TO (BOSize / 16) DO
+        FOR PointIndex := 0 TO (BOSize / 16)-1 DO
             BOCurrent[PointIndex*16+0] := DNPNET.DATA.IED_Outputs.Binary[PointIndex].0;
             BOCurrent[PointIndex*16+1] := DNPNET.DATA.IED_Outputs.Binary[PointIndex].1;
             BOCurrent[PointIndex*16+2] := DNPNET.DATA.IED_Outputs.Binary[PointIndex].2;
@@ -69,19 +85,11 @@ CASE CROBState OF
     2: // 2: Start Processing CROB Values
         CROBIndex := 0;
         PointIndex := 0;
-        DNPNET.CONTROL.CROB_Commands.Command_Count := 0;                                    // Reset the CROB's and get ready to build a new block.
-        FOR PointIndex := BOIndex TO BOSize DO
+        DNPNET.CONTROL.CROB_Commands.Command_Count := 0; // Reset the CROB's and get ready to build a new block.
+        FOR PointIndex := BOIndex TO BOSize-1 DO
             IF BOCurrent[PointIndex] THEN // Only process those binaries that are actually enabled
-                DNPNET.CONTROL.CROB_Commands.CROB_Commands[CROBIndex].Server_Address := 1;      // Slave ID
-                DNPNET.CONTROL.CROB_Commands.CROB_Commands[CROBIndex].Object         := 12;     // Control Block
-                DNPNET.CONTROL.CROB_Commands.CROB_Commands[CROBIndex].Variation      := 1;      // Control Relay Output Block
-                DNPNET.CONTROL.CROB_Commands.CROB_Commands[CROBIndex].Function       := 5;      // Direct Operate
+                COP(CROBTemplate, DNPNET.CONTROL.CROB_Commands.CROB_Commands[CROBIndex],1);
                 DNPNET.CONTROL.CROB_Commands.CROB_Commands[CROBIndex].Point_Number_In_Server := PointIndex;
-                DNPNET.CONTROL.CROB_Commands.CROB_Commands[CROBIndex].Control_Code   := 1;      // Set it to Pulse ON
-                DNPNET.CONTROL.CROB_Commands.CROB_Commands[CROBIndex].Pulse_Count    := 1;      // Single PULSE
-                DNPNET.CONTROL.CROB_Commands.CROB_Commands[CROBIndex].Pulse_On       := 3000;   // Pulse for 3 seconds
-                // I'm not sure this line is even necessary...
-                BOCurrent[PointIndex] := 0;  // Turn off the bit, once we send it to CROB!
                 CROBIndex := CROBIndex + 1;
                 DNPNET.CONTROL.CROB_Commands.Command_Count := CROBIndex;
                 // Turn off the bit after we create a CROB for it, to avoid any confusion with it.
@@ -117,7 +125,7 @@ CASE CROBState OF
             CROBState := 3;
         END_IF;
 
-        IF PointIndex >= BOSize THEN
+        IF PointIndex >= BOSize-1 THEN
             // We made it through the entire Binary IEDOutput Table.  So, next time in, we need to restart the process.
             BOIndex := 0; // Restart the scan from first point.
             CROBProcessDone := 1;
@@ -126,8 +134,8 @@ CASE CROBState OF
     3: // 3: Transmit current CROB
         DNPNET.CONTROL.CROB_Commands.Send := 1;
         CROBState := 4;
-    4: // 4: Wait for Module to acknowledge
-        IF DNPNET.UTIL.LastWrite = 9901 THEN
+    4: // 4: Wait for AOI and Module to acknowledge
+        IF NOT DNPNET.CONTROL.CROB_Commands.Send THEN
             CROBState := 5;
         END_IF;
     5: // 5: Wait until module is done processing previous CROBs
