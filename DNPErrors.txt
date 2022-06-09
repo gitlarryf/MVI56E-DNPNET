@@ -15,7 +15,7 @@
 //
 //  Copyright © 2016 ProSoft Technology, Inc.  All rights reserved.
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Note that you can set the NumCommand tag to 0, and this code will automagically figure out how many commands you have.  Otherwise,
+// Note that you can set the NumCommand tag to 0, and this code will automatically figure out how many commands you have.  Otherwise,
 // we rely on the value you set in the NumCommands.  If 
 IF NumCommands = 0 THEN
     SIZE(DNPNET.CONFIG.DNP_Client_Commands, 0, NumCommands);

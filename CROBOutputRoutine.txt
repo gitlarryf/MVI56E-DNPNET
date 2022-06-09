@@ -29,6 +29,7 @@
 //    07/21/2021 09:29:01 Re-purposed state 4 to watch the state of CROB_Commands.Send before moving on.
 //                        Fixed bug forcing you to use a larger BOCurrent size than necessary.
 //                        Added tag CROBTemplate allowing user to modify CROBs sent from this routine, without recompiling.
+//    07/26/2021 17:38:58 Fixed bug when only 1 CROB was queued to be sent.
 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // This routine is a state machine, with the following possible states:
@@ -47,12 +48,6 @@ IF S:FS THEN
 END_IF;
 
 IF DisableAutoCROB AND CROBState = 1 THEN
-    // We wait until the current batch of CROB's have been sent, before we stop
-    // running CROB's.  This is useful if the DNPNET needs to send a different
-    // type of CROB command, not just the PULSE ON, or PULSE OFF, or if the code
-    // needs to alter the CROBTemplate that is currently in use.  To test if this
-    // routine is done, perform checks on both tags.
-    // XIC DisableAutoCROB XIC CROBProcessDone ... BST NXB BND etc.
     RET();
 END_IF;
 
@@ -121,14 +116,14 @@ CASE CROBState OF
             END_IF;
         END_FOR;
 
-        IF CROBIndex > 0 THEN
-            CROBState := 3;
-        END_IF;
-
         IF PointIndex >= BOSize-1 THEN
             // We made it through the entire Binary IEDOutput Table.  So, next time in, we need to restart the process.
             BOIndex := 0; // Restart the scan from first point.
             CROBProcessDone := 1;
+            IF CROBIndex > 0 THEN
+                CROBState := 3;
+                RET();
+            END_IF;
             CROBState := 6;
         END_IF;
     3: // 3: Transmit current CROB

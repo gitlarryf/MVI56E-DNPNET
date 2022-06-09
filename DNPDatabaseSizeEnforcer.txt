@@ -23,12 +23,14 @@ DNPServerDatabaseSizes.CNTR     := 0;       //    0  DINTs    (  0)
 DNPServerDatabaseSizes.BO       := 10;      // 160  BOOLs     (10)
 DNPServerDatabaseSizes.AO16     := 20;      //  20  INTs      (20)
 DNPServerDatabaseSizes.AO32     := 0;       //   0  DINTs     ( 0)
-DNPServerDatabaseSizes.FLTO     := 10;      //  10  REALs     (10)
+DNPServerDatabaseSizes.FLTO     := 10;      //  10  REALs     (20)
 DNPServerDatabaseSizes.DBLO     := 0;       //   0  LREALs    ( 0)
                                             //             -------
-                                            //                740 total words used.
+                                            //                750 total words used.
 //***/
-// Don't attempt to force the database sizes until the module has at least completed one cycle through the firmware.
+// Don't attempt to force the database sizes until the module has at least completed one cycle through the firmware.  This
+// at least ensure that the module has gotten its configuration size from the AOI, and is ready accept a connection on the
+// server port.  The first time we see a 300-GeneralStatus block, ensures that we are in this state.
 IF DNPNET.UTIL.LastRead = 300 THEN
     // Test the calculated DNPNET database sizes against the desired sizes, and if they are not what the user wants them to
     // be, then forcefully set the values to the desired value, and WARM boot the module.  Do NOT cold-boot it.
